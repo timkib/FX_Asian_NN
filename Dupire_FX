@@ -1,0 +1,127 @@
+import numpy as np
+from scipy.stats import norm
+import matplotlib.pyplot as plt
+from scipy.stats import qmc
+from scipy.interpolate import interp1d, interp2d, PchipInterpolator
+from FX_BS import PV_FX_BS
+from FX_Asian_LV_MC import AsianLocalVolMC
+from helper import get_closest
+from numba import njit, jit
+
+
+# @njit
+def sigma_tilde(times, implied_volas, t):
+    """Interpolator of implied volatilities using monotoncic cubic splines."""
+    # return interp1d(times, implied_volas)(t)
+    # return np.interp(t, times, implied_volas)
+    return PchipInterpolator(times, implied_volas)(t)
+
+
+# @njit
+# def d_sigma_dt(times, implied_volas, t, h=0.0000001):
+#     """Numerical derivative of the implied vola function with respect to time t."""
+#     return (sigma_tilde(times, implied_volas, t + h) - sigma_tilde(times, implied_volas,
+#                                                                    t - h)) / (
+#                 2 * h)  # finite differences using central difference
+
+def d_sigma_dt(times, implied_volas, t):
+    """Numerical derivative of the implied vola function with respect to time t."""
+    return PchipInterpolator(times, implied_volas).derivative()(t)
+
+
+# def delta_to_strike(delta, r_dom, r_for, sigma_tilde_value, t, S0):
+#     """Converts the in the FX market typical deltas into Strikes. Here we assume adjusted spot deltas."""
+#     return S0 * np.exp(sigma_tilde_value)
+
+# @njit
+# def DupireFormulaFX_1D(K, implied_volas, times, t, r_dom, r_for):
+#     sigma_tilde_value = sigma_tilde(times, implied_volas, t)
+#     dsigma_tilde_dK = 0
+#     d2simga_tilde_dK2 = 0
+#     dsigma_tilde_dt = d_sigma_dt(times, implied_volas, t)
+#     numerator = 2 * dsigma_tilde_dt + sigma_tilde_value / t
+#     denominator = K ** 2 * (1 / sigma_tilde_value * (1 / (K * np.sqrt(t))) ** 2)
+#     return numerator / denominator
+
+# @njit
+def DupireFormulaFX_1D(K, implied_volas, times, t, r_dom, r_for):
+    sigma_tilde_value = sigma_tilde(times, implied_volas, t)
+    dsigma_tilde_dt = d_sigma_dt(times, implied_volas, t)
+    numerator = sigma_tilde_value ** 2 + 2 * sigma_tilde_value * t * dsigma_tilde_dt
+    denominator = 1
+    return numerator / denominator
+
+# Example Usage
+# S = 1.2  # Spot price
+# r_dom = 0.05
+# r_for = r_dom
+# K = 1.2  # Fixed strike price
+# # # # sigma = 0.9
+# # # t = 0
+# T = 1
+# # option_type = "Call"
+# # # times = np.linspace(0.01, 1.0, 10)  # Different times to maturity (T - t) from 0.01 to 1 year
+# # # implied_vols = np.array([0.9, 0.85, 0.81, 0.76, 0.70, 0.67, 0.63, 0.59, 0.58, 0.55])
+# # implied_vols = np.array([0.9, 0.81, 0.74, 0.70, 0.68, 0.63, 0.58, 0.59, 0.65, 0.70])
+# implied_sigmas = np.array([0.38, 0.35, 0.31, 0.35, 0.45, 0.55, 0.1])
+#
+# one_week = 7 / 365
+# one_month = 30 / 365
+# two_months = one_month * 2
+# three_months = one_month * 3
+# six_months = one_month * 6
+# one_year = 1
+# two_years = 2
+# three_years = 3
+# four_years = 4
+# five_years = 5
+
+# times = np.array([one_week, one_month, two_months, three_months, six_months, one_year, two_years])
+# local_vol_times = np.zeros(shape=367)
+# local_vol_times[1:] = np.linspace(0.02, 1.1, 366)
+#
+# local_vols = [DupireFormulaFX_1D(K, implied_sigmas, times, t, r_dom, r_for) for t in local_vol_times[1:]]
+# local_vols.insert(0, local_vols[0])
+
+# print("local_vol_times", local_vol_times)
+# print("local_vols", local_vols)
+
+# idx = get_closest(local_vol_times, 0.5)
+# print("idx", idx)
+# val1 = np.trapz(local_vols[:163 + 1], dx=0.5 / 163) * 2
+# print("local_vols 0", local_vols[1])
+# print("val1", val1)
+# print(local_vols[:idx])
+#
+# integral_val = 0
+# for i in range(163 + 1):
+#     lenghts = 0.5 / 164
+#     vals = local_vols[i]
+#     integral_val += lenghts * vals
+
+# print("integral_val before",integral_val)
+# integral_val = 1 / 0.5 * integral_val
+# print("integral_val", integral_val)
+
+# idx = get_closest(local_vol_times, 1.0)
+# print(idx)
+# val2 = np.trapz(local_vols[:333], dx=1 / 333)
+# print("val2", val2)
+
+# integral_val = 0
+# for i in range(0, 333):
+#     lenghts = 1 / (333)
+#     vals = local_vols[i]
+#     integral_val += lenghts * vals
+#
+# print("integral_val", integral_val)
+
+
+# fixings = np.array([0.5, 1.0])
+# notional = 100
+#
+# asian_lv_mc = AsianLocalVolMC(S, r_dom, r_for, T, K, fixings, notional,
+#                               local_vol_times, local_vols, type_paths="QMC", scheme="Milstein")
+#
+# V0 = asian_lv_mc.pv()
+# print("PV", V0)
